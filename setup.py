@@ -11,7 +11,7 @@ print find_packages()
 setup(
     name='django-errorlog',
     version=VERSION,
-    description='Reuseable app for django to collect the unexpted exception and generate comprehansive report just like what you get in debug mode and store in database',
+    description='Django reuseable app to collect the unexpcted exception then generate comprehansive report just like what you get in debug mode and store in database',
     url="https://github.com/yjmade/django-errorlog",
     long_description=long_description,
     author='Jay Young(yjmade)',

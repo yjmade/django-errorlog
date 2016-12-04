@@ -27,6 +27,11 @@ def get_vcs_rev():
 
 
 class BaseError(models.Model):
+
+    class Meta(object):
+        ordering = ["-occur_time"]
+        abstract = True
+
     fixed = models.BooleanField(default=False)
     occur_time = models.DateTimeField(default=now)
     fix_time = models.DateTimeField(null=True)
@@ -170,9 +175,6 @@ class BaseError(models.Model):
         for obj in query:
             obj._same_count = unique_errors_id_ct[obj.id]
         return {i: item for i, item in enumerate(query)}
-
-    class Meta(object):
-        abstract = True
 
 
 class Error(BaseError):
