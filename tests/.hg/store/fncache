@@ -1,0 +1,14 @@
+data/simple/migrations/__init__.py.i
+data/simple/models.py.i
+data/tests/urls.py.i
+data/simple/urls.py.i
+data/tests/__init__.py.i
+data/manage.py.i
+data/simple/admin.py.i
+data/db.sqlite3.i
+data/simple/__init__.py.i
+data/simple/apps.py.i
+data/simple/views.py.i
+data/tests/wsgi.py.i
+data/tests/settings.py.i
+data/simple/tests.py.i
