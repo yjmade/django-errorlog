@@ -1,181 +1,104 @@
-# django-pgjsonb
-Django Postgres JSONB Fields support with lookups
+# django-errorlog
+Django reuseable app to collect the unexpcted exception then generate comprehansive report just like what you get in debug mode and store in database
 
-Originaly inspired by [django-postgres](https://bitbucket.org/schinckel/django-postgres/)
+Introduction
+============
+Django has it's own error handling machanism, which will send a email to the admin address configed in the settings. It works but there are some shortage.
+
+1. The stack trace include in the email is as same as what you can see in console. It doesn't contains the varible value which can be very useful to debug.
+
+2. Incovinient to trace the errors, it's a email, hard to catoegorized, and hard to track the status.
+3. Some times one same error will bring you thousands of emails if this api happens to be visit a lot. You will waste a lot of time to find the different errors from the error happens most.
+
+This module solves these problem in the following way.
+
+1. We are love the Django buildin debug 500 page, it's contains almost all the information we need to debug, like the request infomation, the user, the settings, the stack trace with local vars, etc. So what we do, is to have a middleware to capture the unhandle exception then simply invoke the Django buildin reporter class to generate the full html report of the exception, then store in the database.
+2. Each error item have the field to record a. fixed b. vcs version(support hg and git), you can `ignore` it after this bug has been addressed. Then it will gone from the `unfixed_error` list.
+3. Errors will be categoried by the type of exception and the location where the exception been raised (location means the python file path and the method name). So in most case, same error that happened multiple times will be showed only once but with the count of how many times it's happend. Then when the error been ignore, all the same error will been marked as ignored.
+
+This Module has been running in my company's website for more than 1 year and helps to solved thousands of bugs.
 
 Change Logs
 ===========
-2016-06-01: 0.0.23
-    Fix value from select_json not been decode from json introduce by 0.0.18
+2016-12-04: 0.1.0
+Initial submit. Split the code from the online project. Write the documents, and add the tests. 
 
-2016-03-24: 0.0.22
-    Fix error #11 remove the unexpect decode float to Decimal
-
-2016-03-19: 0.0.21
-    Fix error #10
-
-2016-03-09: 0.0.20
-    Add the array length for select_json
-
-2016-03-08: 0.0.19
-    fix when add a json field with db_index=True and it's fail to generate the create index sql
-
-2016-03-01: 0.0.18
-    we want to be able to use customize decoder to load json, so get avoid the psycopg2's decode json, just return raw text then we deserilize by the field from_db_value
-
-2016-03-01: 0.0.17
-    patch the django serilizer to not return the stringifyed result
-
-2015-07-23: 0.0.16
-    Add support for ./manage.py inspectdb
-
-2015-06-10: 0.0.15
-    Add support for db_index to add GIN index
 
 Install
 =======
-
-`pip install django-pgjsonb`
-
-Definition
-===
-
-```python
-from django_pgjsonb import JSONField
-
-class Article(models.Model):
-    meta=JSONField([null=True,default={},decode_kwargs={},encode_kwargs={},db_index=False,db_index_options={}])
+ 
+```bash
+pip install django-errorlog
 ```
+Then modify the settings
+ 
+1. add `errorlog` in the INSTALLED_APPS  
+2. if you are using django>=1.10, insert `errorlog.middlewares.ErrorLogMiddleware` in the `MIDDLEWARES` at the first line.
+3. (optional) if you have your django project live inside a VCS(hg or git), set `VCS_SYSTEM = "hg"` or  `VCS_SYSTEM = "git"` to enable the erro rev tracking.
 
-Encoder and Decoder Options
-===
-by define decode_kwargs and encode_kwargs you can use your customize json dump and load behaveior, basicly these parameters will just pass to json.loads(**decode_kwargs) and json.dumps(**encode_kwargs)
+Then do `python manage.py migrate` to setup the database table.
 
-here is an example for use [EJSON](https://pypi.python.org/pypi/ejson) to store native datetime object
+Then when your views get an 500 error, there will be a new log item stored.
 
-```python
-import ejson
 
-class Article(models.Model):
-    meta=JSONField(encode_kwargs={"cls":ejson.EJSONEncoder},decode_kwargs={"cls":ejson.EJSONDecoder})
-```
-
-Add Index
+Usage
 =====
-[new add in 0.0.15]
-
-jsonb field support gin type index to accelerator filtering. Since JSON is a data structure contains hierarchy, so the index of jsonb field will be more complicate than another single value field. More information, please reference [Postgres document 8.14.4](http://www.postgresql.org/docs/9.4/static/datatype-json.html)
-
+ buildin shell command
+------------------
 ```python
-meta=JSONField(db_index=True)
-or
-meta=JSONField(db_index=True,db_index_options={"path":"authors__name","only_contains":True})
-or
-meta=JSONField(db_index=True,db_index_options=[{},{"path":"authors__name","only_contains":True}])
+>>> from errorlog.models import Error
+>>> Error.unfixed_errors
+{0: <Error:     1 - /test/2/ - ValueError: A>,
+ 1: <Error:     4 - /test/1/ - ValueError: B>}
+>>> error = Error.unfixed_errors[1]
+>>> error
+ 1: <Error:     4 - /test/1/ - ValueError: B>
+>>> # in this repr, the first number is the index to make it easy to select; 
+>>> # the second number 4 is the the count of the same error happened;
+>>> # /test/1/ is the uri of the api;
+>>> # ValueError is the exception type; 
+>>> # B is the args in the exception.
+>>> error.vcs_rev # the git/hg version of error, for hg, it's the incremental number that is orderable
+"1"
+>>> error.ignore() # this command ignore the whole 4 error logs
 ```
 
-When set db_index as True and do not set db_index_options, it will generate default GIN index, most case it's enough.
+Django admin
+------------
+If you use django buildin admin, you should be able to find the Error in the home page.
 
-When specify ```db_index_options={"only_contains":True}```, the index will be as the non-default GIN operator class jsonb_path_ops that supports indexing the ```contains``` operator only, but it's consume less space and more efficient.
+If you want to see the html error report, you need to build the view youself to transfer the error_html to the browser.
 
-When specify the path parameter in db_index_options, ```db_index_options={"path":"authors__name"}```, then index will generate to the specify path, so that ```Article.objects.filter(meta__authors__name__contains=["asd"])``` can utilize the index.
-
-So you can create multiple index in one JSONField, just pass the db_index_options parameter as a list that contains multiple options, it will generate multiple correspond indexes. Empty dict stand for the default GIN index.
-
-
-Lookups
-=======
-###Contains a wide range of lookups supported natively by postgres
-
-1. `has` :if field has specific key *`("?")`*
-
-    ```python
-    Article.objects.filter(meta__has="author")
-    ```
-
-2. `has_any` : if field has any of the specific keys *`("?|")`*
-
-    ```python
-    Article.objects.filter(meta__has_any=["author","date"])
-    ```
-3. `has_all` : if field has all of the specific keys *`("?&")`*
-
-    ```python
-    Article.objects.filter(meta__has_all=["author","date"])
-    ```
-4. `contains` : if field contains the specific keys and values *`("@>")`*
-    ```python
-    Article.objects.filter(meta__contains={"author":"yjmade","date":"2014-12-13"})
-    ```
-
-5. `in` or `contained_by` : if all field key and value  contain by input *`("<@")`*
-    ```python
-    Article.objects.filter(meta__in={"author":"yjmade","date":"2014-12-13"})
-    ```
-
-6. `len` : the length of the array, transform to int, and can followed int lookup like gt or lt *`("jsonb_array_length()")`*
-
-    ```python
-    Article.objects.filter(meta__authors__len__gte=3)
-    Article.objects.filter(meta__authors__len=10)
-    ```
-7. `as_(text,int,float,bool,date,datetime)` : transform json field into specific data type so that you can follow operation of this type *`("CAST(FIELD as TYPE)")`*
-
-    ```python
-    Article.objects.filter(meta__date__as_datetime__year__range=(2012,2015))
-    Article.objects.filter(meta__view_count__as_float__gt=100)
-    Article.objects.filter(meta__title__as_text__iregex=r"^\d{4}")
-    ```
-8. `path_(PATH)` : get the specific path, path split by '_' *`("#>")`*
-
-    ```python
-    Article.objects.filter(meta__path_author_articles__contains="show me the money")
-    ```
-
-Added function to QuerySet
-========================
-1.`select_json("JSON_PATHS",field_name="JSON_PATHS")`
-
-JSON_PATHS in the format of paths separated by "__",like "meta__location__geo_info". It will use the queryset's `extra` method to transform a value inside json as a field.
-If no field_name provided, it will generate a field name with lookups separate by _ without the json field self's name, so `select_json("meta__author__name")` is equal to `select_json(author_name="meta__author__name")`
+Advance Usage
+--------------
+You can use Error.log_exception to log one specific error in one certain scope. 
 
 ```python
-Article.objects.select_json("meta__author__name",geo="meta__location__geo_info")`
+from errorlog.models import Error
+with Error.log_exception("name", reraise=False):
+	do_something_here()
+
 ```
+If `reraise = True`, then after being loged, the exception will keep raising out. Caution, if you have database atomic open, since unhandle error will make django to rollback the transaction, so this log will also been rollbacked.
 
- This operation will translate to sql as
-
- ```sql
- SELECT "article"."meta"->'location'->'geo_info' as "geo", "article"."meta"->'author'->'name' as "author_name"
- ```
-
-[new add in 0.0.20]
-You can also select the length of a json array as a field by use Length object
+If `reraise = False`, then it will log the exception then stop propogation and continue to run the following code. It's as same as the following code
 
 ```python
-from django.pgjsonb.fields import Length
-Article.objects.select_json(authors_len=Length("meta__authors")).values("authors_len")
+try:
+	do_something_here()
+except Exception as e:
+    pass
 ```
 
-  After select_json, the field_name can be operate in values() and values_list() method, so that
-
-  1. select only one specific value inside json
-  2. to group by one value inside json
-
-is possible.
-
-Demo:
+Here is an example of how I using it
 
 ```python
-Article.objects.all().select_json(tags="meta__tags").values_list("tags")
-# select only "meta"->'tags'
-
-Article.objects.all().select_json(author_name="meta__author__name")\
-    .values("author_name").annotate(count=models.Count("author_name"))
-# GROUP BY "meta"->'author'->'name'
+with Error.log_exception("send_email_through_mailgun", reraise=False):
+	response=requests.post(url,parms)
+	content=response.content
+	status_code=response.status_code
+	if status_code!=200:
+		raise ValueError("Mailgun failed")
+other_stuff()
 ```
-
-
-
-
-#####For more information about raw jsonb operation, please see [PostgreSQL Documentation](http://www.postgresql.org/docs/9.4/static/functions-json.html)
+So that I can capture when the mailgun's api return an error, and keep the stuff going.
