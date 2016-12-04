@@ -170,7 +170,7 @@ class BaseError(models.Model):
     @class_property
     @classmethod
     def unfixed_errors(cls):
-        unique_errors_id_ct = dict(cls.objects.filter(fixed=False).values("error_type", "stack_hash").annotate(max_id=models.Max("id"), ct=models.Count("id")).values_list("max_id", "ct"))
+        unique_errors_id_ct = dict(cls.objects.order_by().filter(fixed=False).values("error_type", "stack_hash").annotate(max_id=models.Max("id"), ct=models.Count("id")).values_list("max_id", "ct"))
         query = cls.objects.filter(id__in=unique_errors_id_ct.keys())
         for obj in query:
             obj._same_count = unique_errors_id_ct[obj.id]

@@ -10,6 +10,7 @@ class ErrorAdmin(admin.ModelAdmin):
         "fixed",
     ]
     list_display = [
+        "name",
         "error_message",
         "occur_time"
     ]
