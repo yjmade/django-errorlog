@@ -8,7 +8,7 @@ if 'sdist' in sys.argv:
     long_description = convert('README.md', 'rst')
 else:
     long_description = ""
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 setup(
     name='django-errorlog',
@@ -19,7 +19,7 @@ setup(
     author='Jay Young(yjmade)',
     author_email='dev@yjmade.net',
     packages=find_packages(),
-    install_requires=["django>1.9"],
+    install_requires=["django>1.9", "six"],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
